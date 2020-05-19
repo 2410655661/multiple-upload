@@ -1,0 +1,23 @@
+{
+  "name": "multiple-upload",
+  "version": "1.0.0",
+  "description": "1.切片\r 2.进度",
+  "main": "upload.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2410655661/multiple-upload.git"
+  },
+  "author": "wyf",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/2410655661/multiple-upload/issues"
+  },
+  "homepage": "https://github.com/2410655661/multiple-upload#readme",
+  "dependencies": {
+    "spark-md5": "^3.0.1",
+    "worker-loader": "^2.0.0"
+  }
+}

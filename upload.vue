@@ -1,10 +1,14 @@
 <template>
   <div>
-    <input
-      id="file"
-      type="file"
-      @change="handleFileChange"
-    >
+    {{ file.name }}
+    <div class="file-box">
+      <input
+        id="file"
+        class="file"
+        type="file"
+        @change="handleFileChange"
+      >
+    </div>
     <button @click="handleUpload">上传</button>
     {{ hashProgress }}
   </div>
@@ -20,18 +24,78 @@ export default {
   data () {
     return {
       chunks: [],
-      file: [],
+      file: '',
       hash: null,
       hashProgress: 0
     }
   },
   methods: {
+    blobToString (blob) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+
+        reader.onload = function () {
+          const ret = reader.result.split('')
+            .map(v => v.charCodeAt()) // 二进制 => Unicode编码
+            .map(v => v.toString(16).toUpperCase()) // Unicode编码 => 16进制字符串
+            .map(v => v.padStart(2, '0'))
+            .join(' ');
+
+          resolve(ret);
+        }
+        reader.readAsBinaryString(blob);
+      });
+    },
+    async isGif (file) {
+      const ret = await this.blobToString(file.slice(0, 6));
+
+      return (ret === '47 49 46 38 39 611' || ret === '47 49 46 38 37 61');
+    },
+    async isPng (file) {
+      const ret = await this.blobToString(file.slice(0, 8));
+
+      return ret === '89 50 4E 47 0D 0A 1A 0A';
+    },
+    async isJpg (file) {
+      const len = file.size;
+      const start = await this.blobToString(file.slice(0, 8));
+      const tail = await this.blobToString(file.slice(-2, len));
+
+      return start === 'FF D8' && tail === 'FF D9';
+    },
+    isImage (file) {
+      // 通过16进制文件流来判断文件类型
+      // 文件通过file.type 和 file.name来判断文件类型不准确
+      return Promise.all([this.isGif(file), this.isPng(file), this.isJpg(file)])
+        .then(([isgif, ispng, isjpg]) => isgif || ispng || isjpg);
+    },
     handleFileChange (event) {
       const [file] = event.target.files;
 
-      this.file = file;
+      if (file.size > FILE.CHUNK_SIZE) {
+        console.log('文件超过上限1M');
+        return;
+      }
+
+      this.isImage(file)
+        .then((isimg) => {
+          if (!isimg) {
+            console.log('请选择正确的图片格式');
+          } else {
+            this.file = file;
+          }
+        });
+
+      return false
     },
-    ext(filename) {
+    mergeRequest () {
+      return this.$axios.post('/merge', {
+        ext: this.ext(this.file.name),
+        size: FILE.CHUNK_SIZE,
+        hash: this.hash
+      });
+    },
+    ext (filename) {
       return filename.split('.').pop();
     },
     createFileChunk (file, size = FILE.CHUNK_SIZE) {
@@ -69,22 +133,22 @@ export default {
       return spark.end();
     },
     // calculateHashWorker (chunks) {
-      // return new Promise((resolve) => {
-        // web worker 需要同源策略，而且worker不能读取本地文件
-        // vue中需要配置worker-loader插件，保证引用的路径
-        // const worker = new hashWorker();
+    // return new Promise((resolve) => {
+    // web worker 需要同源策略，而且worker不能读取本地文件
+    // vue中需要配置worker-loader插件，保证引用的路径
+    // const worker = new hashWorker();
 
-        // worker.postMessage({ chunks });
-        // worker.onmessage = e => {
-        //   const { progress, hash } = e.data;
+    // worker.postMessage({ chunks });
+    // worker.onmessage = e => {
+    //   const { progress, hash } = e.data;
 
-        //   this.hashProgress = Number(progress.toFixed(2));
-        //   if (hash) {
-        //     worker.terminate();
-        //     resolve(hash);
-        //   }
-        // }
-      // });
+    //   this.hashProgress = Number(progress.toFixed(2));
+    //   if (hash) {
+    //     worker.terminate();
+    //     resolve(hash);
+    //   }
+    // }
+    // });
     // },
     calculateHashIdle (chunks) {
       return new Promise((resolve) => {
@@ -185,7 +249,7 @@ export default {
         hash: this.hash
       });
 
-      if(uploaded) {
+      if (uploaded) {
         console.log('秒传：上传成功');
         return;
       }
@@ -204,10 +268,10 @@ export default {
 
       await this.uploadChunks(uploadedList);
     },
-    async uploadChunks(uploadedList = []) {
+    async uploadChunks (uploadedList = []) {
       const list = this.chunks
         .filter(chunk => uploadedList.indexOf(chunk.name) === -1)
-        .map(({ chunk, name, hash, index}, i) => {
+        .map(({ chunk, name, hash, index }) => {
           const form = new FormData();
           form.append('chunkname', name);
           form.append('ext', this.ext(this.file.name));
@@ -230,5 +294,17 @@ export default {
 }
 </script>
 
-<style lang="scss" scoped>
+<style scoped>
+.file-box {
+  border-radius: 6px;
+  width: 100px;
+  height: 100px;
+  background-color: #3c3c3c;
+}
+
+.file {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
 </style>
